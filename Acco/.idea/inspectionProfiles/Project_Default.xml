@@ -1,0 +1,13 @@
+<component name="InspectionProjectProfileManager">
+  <profile version="1.0">
+    <option name="myName" value="Project Default" />
+    <inspection_tool class="SSBasedInspection" enabled="true" level="WARNING" enabled_by_default="true">
+      <replaceConfiguration name="Log -&gt; Timber" text="Log.$method$($tag$, $message$);" recursive="false" caseInsensitive="true" type="JAVA" reformatAccordingToStyle="false" shortenFQN="false" replacement="Timber.tag($tag$).$method$($message$);">
+        <constraint name="method" within="" contains="" />
+        <constraint name="tag" within="" contains="" />
+        <constraint name="message" within="" contains="" />
+        <constraint name="__context__" target="true" within="" contains="" />
+      </replaceConfiguration>
+    </inspection_tool>
+  </profile>
+</component>
