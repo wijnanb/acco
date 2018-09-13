@@ -15,7 +15,7 @@ void serialEvent1() {
   while(BLUETOOTH.available() > 0) {
     byte data = BLUETOOTH.read();
     byteCount++;
-    USB.print(byteCount); USB.print(F(": ")); USB.print(data, HEX); USB.println();
+    //USB.print(byteCount); USB.print(F(": ")); USB.print(data, HEX); USB.println();
   }
 
   // USB.print(F("byteCount: ")); USB.print(byteCount); USB.println();

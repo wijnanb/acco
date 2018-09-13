@@ -10,4 +10,5 @@
     <color name="colorPrimary">@color/red</color>
     <color name="colorPrimaryDark">@color/black</color>
     <color name="colorAccent">@color/yellow1</color>
+    <color name="textWhite">#FFFFFF</color>
 </resources>
