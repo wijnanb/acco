@@ -14,8 +14,8 @@ unsigned long byteCount = 0;
 void serialEvent1() {
   while(BLUETOOTH.available() > 0) {
     byte data = BLUETOOTH.read();
-    //byteCount++;
-    USB.print(data); USB.println();
+    byteCount++;
+    USB.print(byteCount); USB.print(F(": ")); USB.print(data, HEX); USB.println();
   }
 
   // USB.print(F("byteCount: ")); USB.print(byteCount); USB.println();
@@ -23,12 +23,20 @@ void serialEvent1() {
 
 void setup() {
   USB.begin(9600); // Debugging over USB
-  BLUETOOTH.begin(38400); // Default communication rate of the Bluetooth module
+  BLUETOOTH.begin(9600); // Default communication rate of the Bluetooth module
 
 
   pinMode(led, OUTPUT); // controle led
 
   //WAIT FOR EVERYTHING TO STABILIZE BEFORE STARTING THE LOOP
+  digitalWrite(led, HIGH); 
+  delay(500);
+  digitalWrite(led, LOW);
+  delay(500);
+  digitalWrite(led, HIGH); 
+  delay(500);
+  digitalWrite(led, LOW);
+  delay(500);
   digitalWrite(led, HIGH); 
   delay(500);
   digitalWrite(led, LOW);

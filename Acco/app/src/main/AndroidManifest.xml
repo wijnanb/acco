@@ -23,6 +23,8 @@
             </intent-filter>
         </activity>
 
+        <activity android:name="app.akexorcist.bluetoothspp.DeviceList" />
+
         <service
             android:name=".TickService"
             android:exported="false">
