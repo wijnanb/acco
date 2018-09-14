@@ -72,7 +72,7 @@
                   android:layout_width="wrap_content"
                   android:layout_height="wrap_content"
                   android:layout_marginLeft="6dp"
-                  android:layout_marginTop="22dp"
+                  android:layout_marginTop="23dp"
                   android:text="@string/seconds_start_delay"
                   android:textColor="@color/textWhite"
                   android:textSize="14sp"
@@ -83,7 +83,7 @@
         <TextView android:id="@+id/timerTextView"
                   android:layout_width="wrap_content"
                   android:layout_height="wrap_content"
-                  android:layout_marginTop="18dp"
+                  android:layout_marginTop="20dp"
                   android:text="0:00"
                   android:textColor="@color/textWhite"
                   android:textSize="18sp"
@@ -93,12 +93,11 @@
         <TextView android:id="@+id/timerTotalTextView"
                   android:layout_width="wrap_content"
                   android:layout_height="wrap_content"
-                  android:layout_marginTop="18dp"
                   android:text=" / 0:00"
                   android:textColor="@color/textWhite"
                   android:textSize="18sp"
                   app:layout_constraintRight_toRightOf="parent"
-                  app:layout_constraintTop_toTopOf="@id/pauseIcon"/>
+                  app:layout_constraintTop_toTopOf="@id/timerTextView"/>
 
 
     </android.support.constraint.ConstraintLayout>

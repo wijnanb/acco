@@ -71,26 +71,27 @@ class MainActivity : AppCompatActivity() {
         connectWithBluetoothDevice()
     }
 
-    private fun onPauseClicked() {
-        stop()
-        playIcon.visibility = VISIBLE
+    fun onPauseClicked() {
+        delayTextView.visibility = INVISIBLE
         pauseIcon.visibility = INVISIBLE
+        playIcon.visibility = VISIBLE
+        stop()
     }
 
-    private fun onPlayClicked() {
+    fun onPlayClicked() {
         if (selectedTrack != null) start()
         playIcon.visibility = INVISIBLE
         pauseIcon.visibility = VISIBLE
     }
 
-    private fun updateBluetoothState(state: String, warning: Boolean = false) {
+    fun updateBluetoothState(state: String, warning: Boolean = false) {
         bluetoothStatusTextView.text = state;
         warningIcon.visibility = if (warning) VISIBLE else INVISIBLE
 
         Timber.log(if (warning) Log.ERROR else Log.DEBUG, "BT state: %s", state)
     }
 
-    private fun connectWithBluetoothDevice() {
+    fun connectWithBluetoothDevice() {
         if (!bt.isBluetoothAvailable()) {
             updateBluetoothState("Not available", true)
             return;
@@ -158,6 +159,7 @@ class MainActivity : AppCompatActivity() {
     fun start() {
         index = 0
 
+        timerTextView.text = timeFormat.format(0)
         delayTextView.text = getString(R.string.seconds_start_delay, TimeUnit.SECONDS.convert(START_DELAY, TimeUnit.MILLISECONDS))
         delayTextView.visibility = VISIBLE
 
@@ -172,7 +174,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun onTick() {
+    fun onTick() {
         val byte = bytes!!.get(index)
 
         val time = index * TICK_DELAY
@@ -186,10 +188,9 @@ class MainActivity : AppCompatActivity() {
         index++
     }
 
-    private fun onEnded() {
+    fun onEnded() {
         onPauseClicked()
     }
-
 
     fun requestFileAccess() {
         if (checkSelfPermission(this, READ_EXTERNAL_STORAGE) != PERMISSION_GRANTED) {
@@ -263,6 +264,7 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         bt.stopAutoConnect()
         bt.stopService();
+        stop()
         super.onDestroy()
     }
 }
