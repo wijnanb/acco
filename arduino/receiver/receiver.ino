@@ -17,7 +17,7 @@ const int led = 13; // ingebouwde led van Arduino
 // flikkert 2x dan pause --> geconnecteerd met Android toestel
 // Arduino ingebouwde led:
 // 3x flikkert bij opstarten --> boot
-// 
+// flikkert --> receiving data
 
 
 // 8 noten per shift register, 
@@ -39,7 +39,9 @@ const byte TEMPO_BYTE = 0xEF;
 const byte SYNC_BYTE  = 0xFF;
 
 bool connected = false;
-unsigned long lastTick = 0;
+unsigned long measuredTickDelay = 0;
+unsigned long nextTick = 0;
+unsigned long currentTick = 0;
 unsigned long tickDelay = 10000; // microseconds. default delay between notes
 
 byte previousData = 0;
@@ -52,21 +54,26 @@ bool started = false;
 bool waitingForSyncByte = false;
 uint16_t outOfSyncCounter = 0;
 
+unsigned long ledToggleDelay = 100;
+unsigned long lastReceivedData = 0;
+
 // Interrupt on data sent on Bluetooth module 
 void serialEvent1() {
   while(BLUETOOTH.available() > 0) {
+    lastReceivedData = millis();
+
     byte data = BLUETOOTH.read();
     // USB.print(F("received: ")); printHex(data); USB.print(F(" previous: ")); printHex(previousData); USB.println();
 
     if (previousData == TEMPO_BYTE) {
       tickDelay = data * 1000;
-      USB.print("set tempo: "); USB.print(data); USB.println("ms");
+      USB.print(F("set tempo: ")); USB.print(data); USB.println(F("ms"));
     }
 
     previousData = data;
 
     if (data == START_BYTE) {
-      USB.print("received START_BYTE "); printHex(data); USB.println();
+      USB.print(F("received START_BYTE ")); printHex(data); USB.println();
       // clear buffer
       write_index = 0;
       read_index = 0;
@@ -74,14 +81,14 @@ void serialEvent1() {
     }
 
     if (data == TEMPO_BYTE) {
-      USB.print("received TEMPO_BYTE "); printHex(data); USB.println();
+      USB.print(F("received TEMPO_BYTE ")); printHex(data); USB.println();
       // next byte is tempo byte
       continue;
     }
 
     if (data == TEMPO_BYTE) {
-      USB.print("received END_BYTE "); printHex(data); USB.println();
-      USB.print("outOfSyncCounter: "); USB.print(outOfSyncCounter); USB.println();
+      USB.print(F("received END_BYTE ")); printHex(data); USB.println();
+      USB.print(F("outOfSyncCounter: ")); USB.print(outOfSyncCounter); USB.println();
       continue;
     }
 
@@ -117,13 +124,24 @@ void setup() {
   delay(500);
   updateBufferState();
   if (DEBUG) { USB.println(F("Buffer initialized, we can start streaming")); }  
+
+  currentTick = micros();
+  nextTick = currentTick + tickDelay;
 }
 
 void loop() {
   // very precise ticker
-  if (micros() >= lastTick + tickDelay) {
+  if (micros() >= nextTick) {
+    measuredTickDelay = micros() - currentTick;
+    currentTick = micros();
+    nextTick = nextTick + tickDelay;
+
+    // USB.print(F("    tick  now: ")); USB.print(currentTick); 
+    // USB.print(F(" next: in ")); USB.print(nextTick-currentTick);
+    // USB.print(F(" measuredTickDelay: ")); USB.print(measuredTickDelay); USB.println();
     onTick();
-    lastTick = lastTick + tickDelay;
+
+    digitalWrite(led, (millis() < lastReceivedData + ledToggleDelay) ? ((millis()/ledToggleDelay) % 2 == 0) : 0);
   }
 }
 
@@ -144,7 +162,7 @@ void toOutput(byte data) {
   if (DEBUG) { 
     USB.print(F("* toOutput: ")); 
     printHex(data);
-    USB.print(F("  ")); USB.print(micros() - lastTick); USB.print(F("us"));
+    USB.print(F("  ")); USB.print(measuredTickDelay); USB.print(F("us"));
     USB.print(F("  buffer: ")); USB.print(buffer_state_size); 
     USB.println(); 
   }
@@ -153,9 +171,7 @@ void toOutput(byte data) {
 
   if (data == SYNC_BYTE) {
     USB.println(F("- SYNC_BYTE"));
-    ledOn = !ledOn;
-    digitalWrite(led, ledOn);
-
+    
     if (!waitingForSyncByte) {
       outOfSyncCounter++;
       USB.println(F("- !!!! Received SYNC_BYTE too early")); 
@@ -203,8 +219,6 @@ void updateBufferState() {
     if (DEBUG) { USB.print(F("BUFFER OVERRUN")); USB.println(); }
     read_index = (read_index + MIN_BUFFER) % BUFFER_SIZE;
   }
-
-  digitalWrite(led, buffer_state_size > 0 ? HIGH : LOW); 
 }
 
 
