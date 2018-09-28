@@ -3,4 +3,8 @@
     <string name="select_a_track">select a track</string>
     <string name="track">Track</string>
     <string name="seconds_start_delay">%1$d seconds start delay</string>
+    <string name="with_tempo_ms">tempo: %1$dms</string>
+    <string name="ms">%1$dms</string>
+    <string name="dialog_tempo_title">Tempo</string>
+    <string name="bluetooth_not_connected">Bluetooth device not connected</string>
 </resources>

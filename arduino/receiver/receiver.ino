@@ -9,6 +9,16 @@ const int clearPin = 3;
 const int outputEnablePin = 4;
 const int latchPin =5;
 const int clockPin = 6;
+const int led = 13; // ingebouwde led van Arduino
+
+// status leds betekenen:
+// Bluetooth rode LED: 
+// flikkert snel --> niet geconnecteerd met Android toestel
+// flikkert 2x dan pause --> geconnecteerd met Android toestel
+// Arduino ingebouwde led:
+// 3x flikkert bij opstarten --> boot
+// 
+
 
 // 8 noten per shift register, 
 // 12V, 120ohm => 100mA per poot, max 5 tegelijk wegens 500mA beperking
@@ -22,34 +32,61 @@ byte notes[numShiftReg]   = {0b00111110, 0b00000000, 0b00111110, 0b00011110, 0b0
 byte allOn[numShiftReg]   = {0b11111111, 0b11111111, 0b11111111, 0b11111111, 0b11111111, 0b11111111, 0b11111111};
 byte silence[numShiftReg] = {0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000};
 byte regTest[numShiftReg] = {0b00000000, 0b11111111, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000};
-   
+
+const byte START_BYTE = 0x3F;
+const byte END_BYTE   = 0x7F;
+const byte TEMPO_BYTE = 0xEF;
+const byte SYNC_BYTE  = 0xFF;
 
 bool connected = false;
 unsigned long lastTick = 0;
-unsigned long tickDelay = 10000; // microseconds
+unsigned long tickDelay = 10000; // microseconds. default delay between notes
 
-int led = 13;
+byte previousData = 0;
 byte buffer[BUFFER_SIZE];
 
 uint16_t write_index = 0;
 uint16_t read_index = 0;
 uint16_t buffer_state_size = 0;
 bool started = false;
-
+bool waitingForSyncByte = false;
+uint16_t outOfSyncCounter = 0;
 
 // Interrupt on data sent on Bluetooth module 
 void serialEvent1() {
   while(BLUETOOTH.available() > 0) {
     byte data = BLUETOOTH.read();
+    // USB.print(F("received: ")); printHex(data); USB.print(F(" previous: ")); printHex(previousData); USB.println();
 
-    if (data == 0x3F || data == 0x7F) {
-      USB.print("ignore "); printHex(data); USB.println();
+    if (previousData == TEMPO_BYTE) {
+      tickDelay = data * 1000;
+      USB.print("set tempo: "); USB.print(data); USB.println("ms");
+    }
+
+    previousData = data;
+
+    if (data == START_BYTE) {
+      USB.print("received START_BYTE "); printHex(data); USB.println();
+      // clear buffer
+      write_index = 0;
+      read_index = 0;
+      continue;
+    }
+
+    if (data == TEMPO_BYTE) {
+      USB.print("received TEMPO_BYTE "); printHex(data); USB.println();
+      // next byte is tempo byte
+      continue;
+    }
+
+    if (data == TEMPO_BYTE) {
+      USB.print("received END_BYTE "); printHex(data); USB.println();
+      USB.print("outOfSyncCounter: "); USB.print(outOfSyncCounter); USB.println();
       continue;
     }
 
     buffer[write_index] = data;
 
-    //USB.print(byteCount); USB.print(F(": ")); USB.print(data, HEX); USB.println();
     write_index = (write_index + 1) % BUFFER_SIZE;
     updateBufferState();
   }
@@ -105,19 +142,39 @@ void onTick() {
 
 void toOutput(byte data) { 
   if (DEBUG) { 
-    USB.print(F("toOutput: ")); 
+    USB.print(F("* toOutput: ")); 
     printHex(data);
     USB.print(F("  ")); USB.print(micros() - lastTick); USB.print(F("us"));
     USB.print(F("  buffer: ")); USB.print(buffer_state_size); 
     USB.println(); 
   }
 
-  // group bytes in array of 7 bytes and shift out together
+  // group bytes in array of 7 bytes and shift out together. 8 bytes data = 0xFF + 7 bytes
+
+  if (data == SYNC_BYTE) {
+    USB.println(F("- SYNC_BYTE"));
+    ledOn = !ledOn;
+    digitalWrite(led, ledOn);
+
+    if (!waitingForSyncByte) {
+      outOfSyncCounter++;
+      USB.println(F("- !!!! Received SYNC_BYTE too early")); 
+    }
+    notesIndex = 0;
+    waitingForSyncByte = false;
+    return;
+  }
+
+  if (waitingForSyncByte) {
+    USB.println(F("- !!!! Out of sync, waiting for SYNC_BYTE")); 
+    outOfSyncCounter++;
+  }
+
   notes[notesIndex] = data;
   notesIndex++;
   if (notesIndex == numShiftReg) {
     shiftOutArray(notes);
-    notesIndex = 0;
+    waitingForSyncByte = true;
   }
 }
 
@@ -134,9 +191,10 @@ void updateBufferState() {
 
   // when buffer is empty, we either have a buffer underrun or track has ended. --> close all pipes.
   if (buffer_state_size == 0) {
-    if (DEBUG) { USB.print(F("BUFFER EMPTY")); USB.println(); }
-    toOutput(buffer[read_index]);
     started = false;
+    if (DEBUG) { USB.print(F("BUFFER EMPTY")); USB.println(); }
+
+    //TODO delay tickDelay otherwise last note is never played
     shiftOutArray(silence);
   }
 

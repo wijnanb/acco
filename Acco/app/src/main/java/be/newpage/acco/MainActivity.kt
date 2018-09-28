@@ -8,20 +8,23 @@ import android.os.Handler
 import android.os.Looper
 import android.support.v4.app.ActivityCompat
 import android.support.v4.content.ContextCompat.checkSelfPermission
+import android.support.v7.app.AlertDialog
 import android.support.v7.app.AppCompatActivity
 import android.support.v7.widget.LinearLayoutManager
 import android.support.v7.widget.RecyclerView
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
-import android.view.View.INVISIBLE
-import android.view.View.VISIBLE
+import android.view.View.*
 import android.view.ViewGroup
+import android.widget.SeekBar
+import android.widget.Toast
 import app.akexorcist.bluetotohspp.library.BluetoothSPP
 import app.akexorcist.bluetotohspp.library.BluetoothSPP.AutoConnectionListener
 import app.akexorcist.bluetotohspp.library.BluetoothSPP.BluetoothConnectionListener
 import app.akexorcist.bluetotohspp.library.BluetoothState
 import kotlinx.android.synthetic.main.activity_main.*
+import kotlinx.android.synthetic.main.dialog_tempo.view.*
 import kotlinx.android.synthetic.main.row_track.view.*
 import timber.log.Timber
 import java.text.SimpleDateFormat
@@ -34,8 +37,12 @@ import java.util.concurrent.TimeUnit
 
 class MainActivity : AppCompatActivity() {
 
-    private val START_DELAY: Long = 2000; //ms
-    private val TICK_DELAY: Long = 10; //ms
+    private val SYNC_BYTE: Byte = 0xFF.toByte()
+    private val TEMPO_BYTE: Byte = 0xEF.toByte()
+    private val START_DELAY: Long = 2000 //ms
+    private val MAX_TICK_DELAY = 30 //ms
+    private val MIN_TICK_DELAY = 3 //ms
+    private var tickDelay: Int = MyApplication.preferences.tempo;//ms
 
     private val REQUEST_PERMISSIONS_RESULT_CODE: Int = 1
     private val timeFormat: SimpleDateFormat = SimpleDateFormat("m:ss", Locale.FRANCE)
@@ -46,8 +53,8 @@ class MainActivity : AppCompatActivity() {
     internal var connectedDeviceName: String? = null
 
     internal var selectedTrack: Track? = null
-    internal var index = 0;
-    internal var bytes: ByteArray? = null
+    internal var index = 0
+    internal var bytes: ByteArray = ByteArray(0)
 
     internal val scheduleTaskExecutor: ScheduledExecutorService = Executors.newScheduledThreadPool(1)
     internal var scheduleHandler: ScheduledFuture<*>? = null
@@ -65,6 +72,7 @@ class MainActivity : AppCompatActivity() {
 
         playIcon.setOnClickListener { onPlayClicked() }
         pauseIcon.setOnClickListener { onPauseClicked() }
+        tempoTextView.setOnClickListener { onTempoClicked() }
 
         requestFileAccess()
 
@@ -75,13 +83,49 @@ class MainActivity : AppCompatActivity() {
         delayTextView.visibility = INVISIBLE
         pauseIcon.visibility = INVISIBLE
         playIcon.visibility = VISIBLE
+
+        tempoTextView.text = getString(R.string.with_tempo_ms, tickDelay)
+        tempoTextView.visibility = VISIBLE
         stop()
     }
 
     fun onPlayClicked() {
+        if (connectedDeviceName == null) {
+            Toast.makeText(this, getString(R.string.bluetooth_not_connected), Toast.LENGTH_SHORT).show()
+            return
+        }
+
         if (selectedTrack != null) start()
         playIcon.visibility = INVISIBLE
         pauseIcon.visibility = VISIBLE
+        tempoTextView.visibility = GONE
+    }
+
+    fun onTempoClicked() {
+        val context = this
+        val view = layoutInflater.inflate(R.layout.dialog_tempo, null)
+        view.seekbar.max = MAX_TICK_DELAY - MIN_TICK_DELAY
+        view.seekbar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekbar: SeekBar?, progress: Int, fromUser: Boolean) {
+                view.textView.text = getString(R.string.ms, MIN_TICK_DELAY + progress)
+            }
+
+            override fun onStartTrackingTouch(p0: SeekBar?) {}
+            override fun onStopTrackingTouch(p0: SeekBar?) {}
+        })
+        view.seekbar.progress = tickDelay - MIN_TICK_DELAY
+
+        AlertDialog.Builder(context)
+                .setTitle(getString(R.string.dialog_tempo_title))
+                .setView(view)
+                .setPositiveButton(android.R.string.ok) { dialog, i ->
+                    tickDelay = MIN_TICK_DELAY + view.seekbar.progress
+                    MyApplication.preferences.tempo = tickDelay
+                    dialog.dismiss()
+                    onTrackSelected(selectedTrack!!)
+                }
+                .setNegativeButton(android.R.string.cancel) { dialog, i -> dialog.cancel() }
+                .show()
     }
 
     fun updateBluetoothState(state: String, warning: Boolean = false) {
@@ -115,10 +159,12 @@ class MainActivity : AppCompatActivity() {
 
             override fun onDeviceDisconnected() {
                 Timber.d("BT connection: device disconnected")
+                connectedDeviceName = null
             }
 
             override fun onDeviceConnectionFailed() {
                 Timber.d("BT connection: device connection failed")
+                connectedDeviceName = null
             }
         })
 
@@ -164,7 +210,7 @@ class MainActivity : AppCompatActivity() {
         delayTextView.visibility = VISIBLE
 
         Timber.d("start '%s' with %dms delay", selectedTrack?.title, START_DELAY)
-        scheduleHandler = scheduleTaskExecutor.scheduleAtFixedRate({ onTick() }, START_DELAY, TICK_DELAY, TimeUnit.MILLISECONDS)
+        scheduleHandler = scheduleTaskExecutor.scheduleAtFixedRate({ onTick() }, START_DELAY, tickDelay.toLong(), TimeUnit.MILLISECONDS)
     }
 
     fun stop() {
@@ -175,16 +221,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun onTick() {
-        val byte = bytes!!.get(index)
+        val byte = bytes.get(index)
 
-        val time = index * TICK_DELAY
+        val time = index * tickDelay
         if (index == 0) delayTextView.visibility = INVISIBLE
         if (index % 10 == 0) handler.post { timerTextView.text = timeFormat.format(time) }
 
         Timber.d("Tick #%d %s   send byte: %s   time %s", index, System.currentTimeMillis(), String.format("%02X", byte), timeFormat.format(time))
         bt.send(ByteArray(1, { byte }), false)
 
-        if (index == bytes!!.size - 1) onEnded()
+        if (index == bytes.size - 1) onEnded()
         index++
     }
 
@@ -224,9 +270,32 @@ class MainActivity : AppCompatActivity() {
         onPauseClicked()
 
         selectedTrack = track
-        bytes = track.bytes
-        val byteLength = bytes!!.size
-        val duration = byteLength * 10
+        val byteLength = track.bytes.size
+
+        // add syncByte 0xFF every 7 bytes
+        // at position 0 .. 8 .. 16 ..
+        val numSyncBytes = Util().divideAndCeil(byteLength, 7)
+        var numTempoBytes = 2;
+
+        bytes = ByteArray(numTempoBytes + byteLength + numSyncBytes)
+        var k = 0
+
+        // first 2 bytes are to set tempo
+        bytes.set(0, TEMPO_BYTE)
+        bytes.set(1, tickDelay.toByte()) // byte is signed (-127..128) but not important for value of 3..30
+
+        for (i in 0..(byteLength + numSyncBytes - 1)) {
+            if (i % 8 == 0) {
+                // 1 sync byte
+                bytes.set(i+2, SYNC_BYTE)
+            } else {
+                // 7 data bytes
+                bytes.set(i+2, track.bytes.get(k))
+                k++
+            }
+        }
+
+        val duration = bytes.size * tickDelay
         Timber.d("Selected track %s size: %d bytes (%d ms)", track.title, byteLength, duration)
 
         selectedTrackTextView.text = track.title
