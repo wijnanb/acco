@@ -1,4 +1,4 @@
-#define DEBUG 1 // set DEBUG = false to maximize performance
+#define DEBUG 0 // set DEBUG = false to maximize performance
 #define DEBUG_BUFFER 0
 #define USB Serial
 #define BLUETOOTH Serial1
@@ -67,13 +67,13 @@ void serialEvent1() {
 
     if (previousData == TEMPO_BYTE) {
       tickDelay = data * 1000;
-      USB.print(F("set tempo: ")); USB.print(data); USB.println(F("ms"));
+      if (DEBUG) { USB.print(F("set tempo: ")); USB.print(data); USB.println(F("ms")); }
     }
 
     previousData = data;
 
     if (data == START_BYTE) {
-      USB.print(F("received START_BYTE ")); printHex(data); USB.println();
+      if (DEBUG) { USB.print(F("received START_BYTE ")); printHex(data); USB.println(); }
       // clear buffer
       write_index = 0;
       read_index = 0;
@@ -81,14 +81,13 @@ void serialEvent1() {
     }
 
     if (data == TEMPO_BYTE) {
-      USB.print(F("received TEMPO_BYTE ")); printHex(data); USB.println();
+      if (DEBUG) { USB.print(F("received TEMPO_BYTE ")); printHex(data); USB.println(); }
       // next byte is tempo byte
       continue;
     }
 
-    if (data == TEMPO_BYTE) {
-      USB.print(F("received END_BYTE ")); printHex(data); USB.println();
-      USB.print(F("outOfSyncCounter: ")); USB.print(outOfSyncCounter); USB.println();
+    if (data == END_BYTE) {
+      if (DEBUG) { USB.print(F("received END_BYTE ")); printHex(data); USB.println(); }
       continue;
     }
 
@@ -115,7 +114,8 @@ void setup() {
   digitalWrite(led, HIGH); delay(500); digitalWrite(led, LOW); delay(500); digitalWrite(led, HIGH); delay(500); 
   digitalWrite(led, LOW); delay(500); digitalWrite(led, HIGH); delay(500); digitalWrite(led, LOW);
 
-  if (DEBUG) { USB.println(F("Init")); }
+  USB.println(F("Init"));
+  if (!DEBUG) { USB.println(F("Debug printing disabled. set DEBUG=1 to enable.")); }
 
   digitalWrite(outputEnablePin, 0);
   digitalWrite(clearPin, 1);
@@ -170,11 +170,11 @@ void toOutput(byte data) {
   // group bytes in array of 7 bytes and shift out together. 8 bytes data = 0xFF + 7 bytes
 
   if (data == SYNC_BYTE) {
-    USB.println(F("- SYNC_BYTE"));
+    if (DEBUG) { USB.println(F("- SYNC_BYTE")); }
     
     if (!waitingForSyncByte) {
       outOfSyncCounter++;
-      USB.println(F("- !!!! Received SYNC_BYTE too early")); 
+      if (DEBUG) { USB.println(F("- !!!! Received SYNC_BYTE too early")); }
     }
     notesIndex = 0;
     waitingForSyncByte = false;
@@ -182,7 +182,7 @@ void toOutput(byte data) {
   }
 
   if (waitingForSyncByte) {
-    USB.println(F("- !!!! Out of sync, waiting for SYNC_BYTE")); 
+    if (DEBUG) { USB.println(F("- !!!! Out of sync, waiting for SYNC_BYTE")); }
     outOfSyncCounter++;
   }
 
@@ -209,6 +209,7 @@ void updateBufferState() {
   if (buffer_state_size == 0) {
     started = false;
     if (DEBUG) { USB.print(F("BUFFER EMPTY")); USB.println(); }
+    if (DEBUG) { USB.print(F("outOfSyncCounter: ")); USB.print(outOfSyncCounter); USB.println(); }
 
     //TODO delay tickDelay otherwise last note is never played
     shiftOutArray(silence);
@@ -248,9 +249,11 @@ void shiftOutArray(byte data[]) {
   digitalWrite(latchPin, 0);
   digitalWrite(clockPin, 0); 
 
-  USB.print(F("shiftOutArray: "));
-  for (int d=0; d<numShiftReg; d++) { printHex(data[d]); USB.print(F(" ")); }
-  USB.println();
+  if (DEBUG) { 
+    USB.print(F("shiftOutArray: "));
+    for (int d=0; d<numShiftReg; d++) { printHex(data[d]); USB.print(F(" ")); }
+    USB.println();
+  }
 
   for (i=0; i<8; i++)  { // from LeastSignificantBit to HighestSignificantBit
     
