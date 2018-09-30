@@ -285,7 +285,7 @@ class MainActivity : AppCompatActivity() {
         bytes.set(1, tickDelay.toByte()) // byte is signed (-127..128) but not important for value of 3..30
 
         for (i in 0..(byteLength + numSyncBytes - 1)) {
-            if (i % 8 == 0) {
+            if (i % 8 == 2) { // set first sync after start sequence (2 bytes)
                 // 1 sync byte
                 bytes.set(i+2, SYNC_BYTE)
             } else {
