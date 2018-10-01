@@ -60,6 +60,7 @@ class MainActivity : AppCompatActivity() {
     internal var bytes: ByteArray = ByteArray(0)
     internal var notes: ByteArray = ByteArray(0)
     internal var times: IntArray = IntArray(0)
+    internal var timestamp:Long = 0
 
     internal val scheduleTaskExecutor: ScheduledExecutorService = Executors.newScheduledThreadPool(1)
     internal var scheduleHandler: ScheduledFuture<*>? = null
@@ -230,14 +231,21 @@ class MainActivity : AppCompatActivity() {
         if (noteIndex == 0) delayTextView.visibility = INVISIBLE
         //if (index % 10 == 0) handler.post { timerTextView.text = timeFormat.format(time) }
 
-        Timber.d("Tick #%d  timeIndex:%d stop on TimeIndex: -", noteIndex, timeIndex)
-        if (noteIndex == 0) {
-            bt.send(ByteArray(1, { 0xFF.toByte() }), false)
+        //Timber.d("Tick #%d  timeIndex:%d stop on TimeIndex: -", noteIndex, timeIndex)
+        if (noteIndex == 0 || noteIndex > 0 && timeIndex == times.get(noteIndex - 1)) {
+            //bt.send(ByteArray(1, { 0xFF.toByte() }), false)
             for (i in 0..6) {
                 val byte = notes.get(noteIndex * 7 + i)
                 bt.send(ByteArray(1, { byte }), false)
                 Timber.d("Tick #%d %s   send byte: %s", index, System.currentTimeMillis(), String.format("%02X", byte))
             }
+
+            if (timestamp > 0) {
+                val dt:Long = System.currentTimeMillis() - timestamp
+                Timber.d("dt: %d", dt)
+            }
+            timestamp = System.currentTimeMillis()
+
             noteIndex++
             timeIndex = 1
 
@@ -296,8 +304,8 @@ class MainActivity : AppCompatActivity() {
 
         val numReg = 7
         songLength = (byteLength - 3) / 8
-        val times = IntArray(songLength)
-        val notes = ByteArray(songLength * 7)
+        times = IntArray(songLength)
+        notes = ByteArray(songLength * 7)
 
         for (i in 0..songLength - 1) {
             times.set(i, track.bytes.get(songLength * numReg + i + 2).toInt())

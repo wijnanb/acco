@@ -289,6 +289,6 @@ void shiftOutArray(byte data[]) {
 }
 
 void printHex(byte data) {
-  if (data < 16) USB.print("0");
+  if (data < 16) USB.print(F("0"));
   USB.print(data, HEX); 
 }
