@@ -218,6 +218,8 @@ class MainActivity : AppCompatActivity() {
 
     fun start() {
         index = 0
+        timeIndex = 0
+        noteIndex = 0
 
         timerTextView.text = timeFormat.format(0)
         delayTextView.text = getString(R.string.seconds_start_delay, TimeUnit.SECONDS.convert(START_DELAY, TimeUnit.MILLISECONDS))
