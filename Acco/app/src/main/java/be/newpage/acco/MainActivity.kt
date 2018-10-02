@@ -33,12 +33,17 @@ import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
+import kotlin.collections.ArrayList
 
 
 class MainActivity : AppCompatActivity() {
 
     private val SYNC_BYTE: Byte = 0xFF.toByte()
     private val TEMPO_BYTE: Byte = 0xEF.toByte()
+    private val START_BYTE: Byte = 0x3F.toByte()
+    private val END_BYTE: Byte = 0x7F.toByte()
+    private val NUL_BYTE: Byte = 0x00.toByte()
+
     private val START_DELAY: Long = 2000 //ms
     private val MAX_TICK_DELAY = 30 //ms
     private val MIN_TICK_DELAY = 3 //ms
@@ -54,7 +59,12 @@ class MainActivity : AppCompatActivity() {
 
     internal var selectedTrack: Track? = null
     internal var index = 0
-    internal var bytes: ByteArray = ByteArray(0)
+    internal var bytes: ArrayList<Byte> = ArrayList()
+
+    internal var songLength = 0
+    internal var times: IntArray = IntArray(0)
+    internal var notes: ByteArray = ByteArray(0)
+
 
     internal val scheduleTaskExecutor: ScheduledExecutorService = Executors.newScheduledThreadPool(1)
     internal var scheduleHandler: ScheduledFuture<*>? = null
@@ -210,7 +220,7 @@ class MainActivity : AppCompatActivity() {
         delayTextView.visibility = VISIBLE
 
         Timber.d("start '%s' with %dms delay", selectedTrack?.title, START_DELAY)
-        scheduleHandler = scheduleTaskExecutor.scheduleAtFixedRate({ onTick() }, START_DELAY, tickDelay.toLong(), TimeUnit.MILLISECONDS)
+        scheduleHandler = scheduleTaskExecutor.scheduleAtFixedRate({ onTick() }, START_DELAY, tickDelay.toLong() * 10, TimeUnit.MILLISECONDS)
     }
 
     fun stop() {
@@ -221,17 +231,18 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun onTick() {
-        val byte = bytes.get(index)
-
         val time = index * tickDelay
         if (index == 0) delayTextView.visibility = INVISIBLE
-        if (index % 10 == 0) handler.post { timerTextView.text = timeFormat.format(time) }
+        if (index % 100 == 0) handler.post { timerTextView.text = timeFormat.format(time) }
 
-        Timber.d("Tick #%d %s   send byte: %s   time %s", index, System.currentTimeMillis(), String.format("%02X", byte), timeFormat.format(time))
-        bt.send(ByteArray(1, { byte }), false)
+        for (i in 0..7) {
+            val byte = bytes.get(index)
+            bt.send(ByteArray(1, { byte }), false)
+            Timber.d("Tick #%d %s   send byte: %s   time %s", index, System.currentTimeMillis(), String.format("%02X", byte), timeFormat.format(time))
+            index++
+        }
 
         if (index == bytes.size - 1) onEnded()
-        index++
     }
 
     fun onEnded() {
@@ -272,31 +283,42 @@ class MainActivity : AppCompatActivity() {
         selectedTrack = track
         val byteLength = track.bytes.size
 
-        // add syncByte 0xFF every 7 bytes
-        // at position 0 .. 8 .. 16 ..
-        val numSyncBytes = Util().divideAndCeil(byteLength, 7)
-        var numTempoBytes = 2;
 
-        bytes = ByteArray(numTempoBytes + byteLength + numSyncBytes)
-        var k = 0
+        val numReg = 7
+        songLength = (byteLength - 3) / 8
+        times = IntArray(songLength)
+        notes = ByteArray(songLength * 7)
 
-        // first 2 bytes are to set tempo
-        bytes.set(0, TEMPO_BYTE)
-        bytes.set(1, tickDelay.toByte()) // byte is signed (-127..128) but not important for value of 3..30
-
-        for (i in 0..(byteLength + numSyncBytes - 1)) {
-            if (i % 8 == 2) { // set first sync after start sequence (2 bytes)
-                // 1 sync byte
-                bytes.set(i+2, SYNC_BYTE)
-            } else {
-                // 7 data bytes
-                bytes.set(i+2, track.bytes.get(k))
-                k++
-            }
+        for (i in 0..songLength - 1) {
+            val b = track.bytes.get(songLength * numReg + i + 2)
+            val time = b.toPositiveInt() / 10
+            times.set(i, time)
         }
 
-        val duration = bytes.size * tickDelay
-        Timber.d("Selected track %s size: %d bytes (%d ms)", track.title, byteLength, duration)
+        for (i in 0..songLength * numReg - 1) {
+            notes.set(i, track.bytes.get(i + 1))
+        }
+
+
+        // first 2 bytes are to set tempo
+        bytes.add(TEMPO_BYTE)
+        bytes.add(tickDelay.toByte()) // byte is signed (-127..128) but not important for value of 3..30
+        bytes.add(START_BYTE)
+        bytes.add(NUL_BYTE)
+
+        var duration = 0
+        for (i in 0..songLength - 1)
+            for (t in 0..times.get(i) - 1) {
+                duration += tickDelay
+                bytes.add(SYNC_BYTE)
+                for (j in 0..6)
+                    bytes.add(notes.get(i * 7 + j))
+            }
+
+        bytes.add(NUL_BYTE)
+        bytes.add(END_BYTE)
+
+        Timber.d("Selected track %s size: %d bytes (%d ms)", track.title, bytes.size, duration)
 
         selectedTrackTextView.text = track.title
         timerTextView.text = timeFormat.format(0)
@@ -336,4 +358,6 @@ class MainActivity : AppCompatActivity() {
         stop()
         super.onDestroy()
     }
+
+    fun Byte.toPositiveInt() = toInt() and 0xFF
 }

@@ -1,4 +1,4 @@
-#define DEBUG 1 // set DEBUG = 0 to maximize performance
+#define DEBUG 0 // set DEBUG = 0 to maximize performance
 #define DEBUG_BUFFER 0
 #define WARN_OUT_OF_SYNC 1
 #define USB Serial
@@ -10,7 +10,9 @@ const int clearPin = 3;
 const int outputEnablePin = 4;
 const int latchPin =5;
 const int clockPin = 6;
-const int led = 13; // ingebouwde led van Arduino
+const int led = 15; // ingebouwde led van Arduino
+
+const int pinOffset = 7; // toevallig zelfde
 
 // status leds betekenen:
 // Bluetooth rode LED: 
@@ -26,7 +28,7 @@ const int led = 13; // ingebouwde led van Arduino
 // 53 noten => 7 shift registers
 
 const int numShiftReg = 7; 
-const int pinOut[numShiftReg] = {7, 8, 9, 10, 11, 12, 14}; //TODO Lize: verander 14 naar 13, op teensy is dit ingebouwde LED
+const int pinOut[numShiftReg] = {7, 8, 9, 10, 11, 12, 13}; //TODO Lize: verander 14 naar 13, op teensy is dit ingebouwde LED
 
 uint8_t notesIndex = 0;
 byte notes[numShiftReg]   = {0b00111110, 0b00000000, 0b00111110, 0b00011110, 0b00000000, 0b00000000, 0b00000000};
@@ -43,7 +45,7 @@ bool connected = false;
 unsigned long measuredTickDelay = 0;
 unsigned long nextTick = 0;
 unsigned long currentTick = 0;
-unsigned long tickDelay = 10000; // microseconds. default delay between notes
+unsigned long tickDelay = 100000; // microseconds. default delay between notes
 
 byte buffer[BUFFER_SIZE];
 byte inputBuffer[2];
@@ -75,7 +77,7 @@ void serialEvent1() {
     inputBufferSize = min(2, inputBufferSize + 1);
 
     if (inputBuffer[1] == TEMPO_BYTE) {
-      tickDelay = inputBuffer[0] * 1000;
+      tickDelay = inputBuffer[0] * 10000;
       USB.print(F("set tempo: ")); USB.print(inputBuffer[0]); USB.println(F("ms"));
       inputBufferSize = 0;
     }
@@ -129,6 +131,8 @@ void setup() {
 
   shiftOutArray(regTest);
   delay(500);
+  shiftOutArray(silence);
+
   updateBufferState();
   if (DEBUG) { USB.println(F("Buffer initialized, we can start streaming")); }  
 
@@ -143,9 +147,9 @@ void loop() {
     currentTick = micros();
     nextTick = nextTick + tickDelay;
 
-    // USB.print(F("    tick  now: ")); USB.print(currentTick); 
-    // USB.print(F(" next: in ")); USB.print(nextTick-currentTick);
-    // USB.print(F(" measuredTickDelay: ")); USB.print(measuredTickDelay); USB.println();
+    USB.print(F("    tick  now: ")); USB.print(currentTick); 
+    USB.print(F(" next: in ")); USB.print(nextTick-currentTick);
+    USB.print(F(" measuredTickDelay: ")); USB.print(measuredTickDelay); USB.println();
     onTick();
 
     digitalWrite(led, (millis() < lastReceivedData + ledToggleDelay) ? ((millis()/ledToggleDelay) % 2 == 0) : 0);
@@ -158,7 +162,6 @@ void onTick() {
 
   if (started) {
     toOutput(buffer[read_index]);
-
     read_index = (read_index + 1) % BUFFER_SIZE;
     updateBufferState();
     //TODO: fix bug where last byte in buffer is never sent to output
@@ -233,8 +236,8 @@ void updateBufferState() {
 }
 
 void printStatistics() {
-  USB.print(F("received: ")); USB.print(bytesReceived); USB.println(" bytes");
-  USB.print(F("out of sync: ")); USB.print(outOfSyncCounter); USB.println(" times");
+  USB.print(F("received: ")); USB.print(bytesReceived); USB.println(F(" bytes"));
+  USB.print(F("out of sync: ")); USB.print(outOfSyncCounter); USB.println(F(" times"));
 }
 
 
@@ -258,37 +261,71 @@ void printStatistics() {
   bit 7 van data6 op pinOut6
 
 */
-void shiftOutArray(byte data[]) {
-  int i=0, j=0;
+// void shiftOutArray(byte data[]) {
+//   int i=0, j=0;
   
-  digitalWrite(latchPin, 0);
-  digitalWrite(clockPin, 0); 
+//   digitalWrite(latchPin, 0);
+//   digitalWrite(clockPin, 0); 
 
-  if (DEBUG) { 
-    USB.print(F("shiftOutArray: "));
-    for (int d=0; d<numShiftReg; d++) { printHex(data[d]); USB.print(F(" ")); }
-    USB.println();
-  }
+//   if (DEBUG) { 
+//     USB.print(F("shiftOutArray: "));
+//     for (int d=0; d<numShiftReg; d++) { printHex(data[d]); USB.print(F(" ")); }
+//     USB.println();
+//   }
 
-  for (i=0; i<8; i++)  { // from LeastSignificantBit to HighestSignificantBit
-    for (j=0; j<numShiftReg; j++) { // from shiftregister 0 to 6
-      digitalWrite(pinOut[j], (data[j] & (1<<i)) ? 1 : 0); // bitI from dataJ on pinOutJ
-    }
+//   for (i=0; i<8; i++)  { // from LeastSignificantBit to HighestSignificantBit
+//     for (j=0; j<numShiftReg; j++) { // from shiftregister 0 to 6
+//       digitalWrite(pinOut[j], (data[j] & (1<<i)) ? 1 : 0); // bitI from dataJ on pinOutJ
+//     }
 
-    //register shifts bits on upstroke of clock pin 
-    digitalWrite(clockPin, 1);
-    delayMicroseconds(30); // pulse op clockPin onafhankelijk van processor speed
-    digitalWrite(clockPin, 0);
+//     //register shifts bits on upstroke of clock pin 
+//     digitalWrite(clockPin, 1);
+//     delayMicroseconds(30); // pulse op clockPin onafhankelijk van processor speed
+//     digitalWrite(clockPin, 0);
     
-    //zero the data pin after shift to prevent bleed through ???? nodig???
-    for (j=0; j<numShiftReg; j++) digitalWrite(pinOut[j], 0); // all pinOuts to 0
-  }
+//     //zero the data pin after shift to prevent bleed through ???? nodig???
+//     for (j=0; j<numShiftReg; j++) digitalWrite(pinOut[j], 0); // all pinOuts to 0
+//   }
   
+//   digitalWrite(clockPin, 0);
+//   digitalWrite(latchPin, 1);
+// }
+
+
+void shiftOutArray(byte myDataOut[]) { //********************************************** SHIFT OUT ARRAY ***********************************************************
+  // parallelle variant omdat alle klokken gelijk op gaan
+ int i=0;
+ int j=0;
+ int pinState;
+ 
+  digitalWrite(latchPin, 0);
+  for (i=0; i<8; i++)  {
+     digitalWrite(clockPin, 0); // voor alle registers
+     for(j=0;j<numShiftReg;j++){ // voor pin pinOffset+j
+     // for(j=0;j<5;j++){  // debug versie
+    if ( myDataOut[j] & (1<<i) ) {
+      pinState= 1;
+    }
+   else {  
+      pinState= 0;
+    }
+    digitalWrite(pinOffset+j, pinState); // TODO reset this
+     }
+    //register shifts bits on upstroke of clock pin  
+    digitalWrite(clockPin, 1);
+    for(j=0;j<numShiftReg;j++){
+      // for(j=0;j<5;j++){ // debug versie
+     //zero the data pin after shift to prevent bleed through ???? nodig???
+    digitalWrite(j+pinOffset, 0);
+    }
+  }
+  //stop shifting
   digitalWrite(clockPin, 0);
   digitalWrite(latchPin, 1);
 }
 
+
 void printHex(byte data) {
-  if (data < 16) USB.print("0");
+  if (data < 16) USB.print(F("0"));
   USB.print(data, HEX); 
 }
