@@ -59,10 +59,14 @@ class MainActivity : AppCompatActivity() {
 
     internal var selectedTrack: Track? = null
     internal var index = 0
+
+    internal var noteIndex = 0
+    internal var timeIndex = 0
     internal var bytes: ArrayList<Byte> = ArrayList()
 
     internal var songLength = 0
     internal var times: IntArray = IntArray(0)
+    internal var timesBytes: ByteArray = ByteArray(0)
     internal var notes: ByteArray = ByteArray(0)
 
 
@@ -220,7 +224,7 @@ class MainActivity : AppCompatActivity() {
         delayTextView.visibility = VISIBLE
 
         Timber.d("start '%s' with %dms delay", selectedTrack?.title, START_DELAY)
-        scheduleHandler = scheduleTaskExecutor.scheduleAtFixedRate({ onTick() }, START_DELAY, tickDelay.toLong() * 10, TimeUnit.MILLISECONDS)
+        scheduleHandler = scheduleTaskExecutor.scheduleAtFixedRate({ onTick() }, START_DELAY, tickDelay.toLong(), TimeUnit.MILLISECONDS)
     }
 
     fun stop() {
@@ -231,21 +235,31 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun onTick() {
-        val time = index * tickDelay
-        if (index == 0) delayTextView.visibility = INVISIBLE
-        if (index % 100 == 0) handler.post { timerTextView.text = timeFormat.format(time) }
+        try {
+            if (index == 0) delayTextView.visibility = INVISIBLE
+            //if (index % 100 == 0) handler.post { timerTextView.text = timeFormat.format(time) }
 
-        for (i in 0..7) {
-            val byte = bytes.get(index)
-            bt.send(ByteArray(1, { byte }), false)
-            Timber.d("Tick #%d %s   send byte: %s   time %s", index, System.currentTimeMillis(), String.format("%02X", byte), timeFormat.format(time))
-            index++
+            if (noteIndex == 0 || timeIndex >= times.get(noteIndex - 1)) {
+
+                if (noteIndex == 0) {
+                    sendBytes(bytes.subList(0, 4).toByteArray())
+                }
+
+                sendBytes(bytes.subList(index, index+9).toByteArray())
+
+                noteIndex++
+                timeIndex = 0
+                if (index == bytes.size) onEnded()
+            } else {
+                timeIndex++
+            }
+        } catch (e: Exception) {
+            Timber.e(e)
         }
-
-        if (index == bytes.size - 1) onEnded()
     }
 
     fun onEnded() {
+        Timber.d("onEnded")
         onPauseClicked()
     }
 
@@ -256,6 +270,18 @@ class MainActivity : AppCompatActivity() {
         }
 
         readFiles()
+    }
+
+    fun sendBytes(list:ByteArray) {
+        bt.send(list, false)
+
+        val output = StringBuilder()
+        for (b in list) {
+            output.append(String.format("%02X ", b))
+        }
+
+        Timber.d("Tick block #%d %s waited %d ticks index: %d send 8 bytes: %s", noteIndex, System.currentTimeMillis(), timeIndex, index, output.toString())
+        index += list.size;
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
@@ -287,12 +313,14 @@ class MainActivity : AppCompatActivity() {
         val numReg = 7
         songLength = (byteLength - 3) / 8
         times = IntArray(songLength)
+        timesBytes = ByteArray(songLength)
         notes = ByteArray(songLength * 7)
 
         for (i in 0..songLength - 1) {
             val b = track.bytes.get(songLength * numReg + i + 2)
-            val time = b.toPositiveInt() / 10
+            val time = b.toPositiveInt()
             times.set(i, time)
+            timesBytes.set(i, b)
         }
 
         for (i in 0..songLength * numReg - 1) {
@@ -307,13 +335,14 @@ class MainActivity : AppCompatActivity() {
         bytes.add(NUL_BYTE)
 
         var duration = 0
-        for (i in 0..songLength - 1)
-            for (t in 0..times.get(i) - 1) {
-                duration += tickDelay
-                bytes.add(SYNC_BYTE)
-                for (j in 0..6)
-                    bytes.add(notes.get(i * 7 + j))
+        for (i in 0..songLength - 1) {
+            bytes.add(SYNC_BYTE)
+            bytes.add(timesBytes.get(i))
+            duration += tickDelay
+            for (j in 0..6) {
+                bytes.add(notes.get(i * 7 + j))
             }
+        }
 
         bytes.add(NUL_BYTE)
         bytes.add(END_BYTE)

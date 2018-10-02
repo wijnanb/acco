@@ -45,7 +45,7 @@ bool connected = false;
 unsigned long measuredTickDelay = 0;
 unsigned long nextTick = 0;
 unsigned long currentTick = 0;
-unsigned long tickDelay = 100000; // microseconds. default delay between notes
+unsigned long tickDelay = 1000; // microseconds. default delay between notes
 
 byte buffer[BUFFER_SIZE];
 byte inputBuffer[2];
@@ -77,7 +77,7 @@ void serialEvent1() {
     inputBufferSize = min(2, inputBufferSize + 1);
 
     if (inputBuffer[1] == TEMPO_BYTE) {
-      tickDelay = inputBuffer[0] * 10000;
+      tickDelay = inputBuffer[0] * 1000;
       USB.print(F("set tempo: ")); USB.print(inputBuffer[0]); USB.println(F("ms"));
       inputBufferSize = 0;
     }
@@ -147,9 +147,9 @@ void loop() {
     currentTick = micros();
     nextTick = nextTick + tickDelay;
 
-    USB.print(F("    tick  now: ")); USB.print(currentTick); 
-    USB.print(F(" next: in ")); USB.print(nextTick-currentTick);
-    USB.print(F(" measuredTickDelay: ")); USB.print(measuredTickDelay); USB.println();
+    // USB.print(F("    tick  now: ")); USB.print(currentTick); 
+    // USB.print(F(" next: in ")); USB.print(nextTick-currentTick);
+    // USB.print(F(" measuredTickDelay: ")); USB.print(measuredTickDelay); USB.println();
     onTick();
 
     digitalWrite(led, (millis() < lastReceivedData + ledToggleDelay) ? ((millis()/ledToggleDelay) % 2 == 0) : 0);
